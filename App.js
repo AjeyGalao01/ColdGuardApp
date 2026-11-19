@@ -1,36 +1,50 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, Dimensions } from "react-native";
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 
 // PALITAN ito ng IPv4 address ng laptop na nagre-run ng server.py
 const API = "http://192.168.254.105:5000";
 
-const ALERTS = {
+// Colors
+const C = {
+  bg: "#EAF1F4",
+  ink: "#0F2A33",
+  muted: "#5B7480",
+  line: "#D3E0E6",
+  surface: "#FFFFFF",
+  safe: "#0E7C7B",
+  warn: "#B45309",
+  bad: "#B42318",
+  cold: "#1D4ED8",
+};
+
+// Status: banner color + icon + text (hindi color lang), English at Filipino
+const STATUS = {
   normal: {
-    bg: "#DCFCE7",
-    icon: "✅",
-    title: "NORMAL",
+    color: C.safe,
+    icon: "✓",
+    title: "Normal",
     msg: "Fridge is within the safe 2–8°C range.",
+    fil: "Ligtas ang temperatura ng ref.",
   },
   warning: {
-    bg: "#FEF3C7",
-    icon: "⚠️",
-    title: "WARNING",
-    msg: "Temperature is nearing the limit. Please check the fridge.",
+    color: C.warn,
+    icon: "!",
+    title: "Warning",
+    msg: "Temperature is close to the limit. Check the fridge.",
+    fil: "Malapit na sa limit ang temperatura. Pakisuri ang ref.",
   },
   excursion: {
-    bg: "#FEE2E2",
-    icon: "🚨",
-    title: "EXCURSION ALERT",
-    msg: "Temperature is outside 2–8°C! Check the fridge now.",
+    color: C.bad,
+    icon: "✕",
+    title: "Excursion alert",
+    msg: "Temperature is outside 2–8°C. Check the fridge now.",
+    fil: "Lampas sa 2–8°C ang temperatura. Suriin agad ang ref.",
   },
 };
 
 const fmt = (ts) =>
-  new Date(ts * 1000).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 // Rate of change in °C per minute (latest reading vs. reading 1 minute earlier)
 function getRate(readings) {
@@ -42,7 +56,36 @@ function getRate(readings) {
   return (last.temperature - prev.temperature) / minutes;
 }
 
+// Thermometer-style scale: shows where the temperature sits vs. the 2–8°C safe band
+function Gauge({ value }) {
+  const MIN = 0;
+  const MAX = 12;
+  const pos = (v) => Math.max(0, Math.min(100, ((v - MIN) / (MAX - MIN)) * 100));
+  return (
+    <View style={{ marginTop: 18 }}>
+      <View style={styles.gaugeTrack}>
+        <View
+          style={[
+            styles.gaugeSafe,
+            { left: `${pos(2)}%`, width: `${pos(8) - pos(2)}%` },
+          ]}
+        />
+        {value != null && (
+          <View style={[styles.gaugeMarker, { left: `${pos(value)}%` }]} />
+        )}
+      </View>
+      <View style={styles.gaugeLabels}>
+        <Text style={[styles.gaugeLabel, { left: `${pos(2)}%` }]}>2°C</Text>
+        <Text style={[styles.gaugeLabel, { left: `${pos(8)}%` }]}>8°C</Text>
+      </View>
+      <Text style={styles.gaugeCaption}>Safe range for vaccines: 2–8°C</Text>
+    </View>
+  );
+}
+
 export default function App() {
+  const { width } = useWindowDimensions();
+  const contentWidth = Math.min(width, 720);
   const [readings, setReadings] = useState([]);
   const [error, setError] = useState(false);
 
@@ -63,111 +106,286 @@ export default function App() {
   }, []);
 
   const latest = readings[readings.length - 1];
-  const alert = ALERTS[latest ? latest.status : "normal"];
+  const s = STATUS[latest ? latest.status : "normal"];
   const rate = getRate(readings);
   const rateIcon = rate === null ? "" : rate > 0.05 ? "↑" : rate < -0.05 ? "↓" : "→";
+  const rateText =
+    rate === null ? "--" : `${rate > 0 ? "+" : ""}${rate.toFixed(2)}°C/min`;
+  const rateNote =
+    rate === null
+      ? "Waiting for more readings"
+      : rate > 0.05
+      ? "Getting warmer"
+      : rate < -0.05
+      ? "Getting colder"
+      : "Stable";
+
+  const temps = readings.map((r) => r.temperature);
+  const low = temps.length ? Math.min(...temps) : null;
+  const high = temps.length ? Math.max(...temps) : null;
+  const recent = [...readings].reverse().slice(0, 15);
 
   return (
-    <ScrollView style={styles.container}>
-      {/* 1. Excursion Alert panel (top) */}
-      <View style={[styles.alert, { backgroundColor: alert.bg }]}>
-        <Text style={styles.alertTitle}>
-          {alert.icon} {alert.title}
-        </Text>
-        <Text style={styles.alertMsg}>{alert.msg}</Text>
-      </View>
-
-      {error && (
-        <Text style={styles.error}>
-          Can't reach the server. Check the IP address and WiFi.
-        </Text>
-      )}
-
-      {/* 2. Current Fridge Statistics */}
-      <View style={styles.box}>
-        <Text style={styles.heading}>Current Fridge Statistics</Text>
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Temperature</Text>
-            <Text style={styles.statValue}>
-              {latest ? `${latest.temperature.toFixed(1)}°C` : "--"}
-            </Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={{ alignItems: "center", paddingBottom: 32 }}
+    >
+      <View style={styles.page}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.appName}>ColdGuard</Text>
+            <Text style={styles.appSub}>Vaccine fridge monitor</Text>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Rate of Change</Text>
-            <Text style={styles.statValue}>
-              {rate === null
-                ? "--"
-                : `${rateIcon} ${rate > 0 ? "+" : ""}${rate.toFixed(2)}°C/min`}
+          <Text style={[styles.updated, error && { color: C.bad, fontWeight: "700" }]}>
+            {error ? "Offline" : latest ? `Updated ${fmt(latest.created_at)}` : "Loading..."}
+          </Text>
+        </View>
+
+        {/* 1. Excursion Alert panel (top) */}
+        <View style={[styles.alert, { backgroundColor: s.color }]}>
+          <View style={styles.alertIcon}>
+            <Text style={[styles.alertIconText, { color: s.color }]}>{s.icon}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.alertTitle}>{s.title}</Text>
+            <Text style={styles.alertMsg}>{s.msg}</Text>
+            <Text style={styles.alertFil}>{s.fil}</Text>
+          </View>
+        </View>
+
+        {error && (
+          <Text style={styles.error}>
+            Can't reach the server. Check the IP address, WiFi, and that server.py is running.
+          </Text>
+        )}
+
+        {/* 2. Current Fridge Statistics */}
+        <View style={styles.section}>
+          <Text style={styles.heading}>Current fridge statistics</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statMain}>
+              <Text style={styles.statLabel}>Temperature</Text>
+              <Text style={[styles.bigNumber, { color: s.color }]}>
+                {latest ? latest.temperature.toFixed(1) : "--"}
+                <Text style={styles.unit}>°C</Text>
+              </Text>
+            </View>
+            <View style={styles.statSide}>
+              <Text style={styles.statLabel}>Rate of change</Text>
+              <Text style={styles.rate}>
+                {rateIcon} {rateText}
+              </Text>
+              <Text style={styles.rateNote}>{rateNote}</Text>
+            </View>
+          </View>
+
+          <Gauge value={latest ? latest.temperature : null} />
+
+          <View style={styles.minmax}>
+            <Text style={styles.minmaxText}>
+              Lowest this hour:{" "}
+              <Text style={styles.minmaxBold}>{low !== null ? `${low.toFixed(1)}°C` : "--"}</Text>
+            </Text>
+            <Text style={styles.minmaxText}>
+              Highest this hour:{" "}
+              <Text style={styles.minmaxBold}>{high !== null ? `${high.toFixed(1)}°C` : "--"}</Text>
             </Text>
           </View>
         </View>
-      </View>
 
-      {/* 3. Readings in the Past Hour (boxed): chart + list */}
-      <View style={styles.box}>
-        <Text style={styles.heading}>Readings in the Past Hour</Text>
-        {readings.length > 0 && (
-          <LineChart
-            data={{
-              labels: readings.map((r, i) =>
-                i % 20 === 0 ? fmt(r.created_at) : ""
-              ),
-              datasets: [{ data: readings.map((r) => r.temperature) }],
-            }}
-            width={Dimensions.get("window").width - 24 - 28}
-            height={240}
-            yAxisSuffix="°C"
-            withDots={false}
-            chartConfig={{
-              backgroundGradientFrom: "#ffffff",
-              backgroundGradientTo: "#ffffff",
-              decimalPlaces: 1,
-              color: (o = 1) => `rgba(37, 99, 235, ${o})`,
-              labelColor: () => "#374151",
-            }}
-            style={{ borderRadius: 12 }}
-          />
-        )}
+        {/* 3. Readings in the Past Hour: chart + list */}
+        <View style={styles.section}>
+          <Text style={styles.heading}>Readings in the past hour</Text>
 
-        {[...readings].reverse().map((r) => (
-          <View key={r.created_at} style={styles.row}>
-            <Text style={styles.rowText}>{fmt(r.created_at)}</Text>
-            <Text style={styles.rowText}>{r.temperature.toFixed(1)}°C</Text>
-            <Text style={styles.rowText}>{r.status}</Text>
-          </View>
-        ))}
+          {readings.length > 0 ? (
+            <>
+              <LineChart
+                data={{
+                  labels: readings.map((r, i) => (i % 24 === 0 ? fmt(r.created_at) : "")),
+                  datasets: [
+                    { data: temps, color: () => C.ink, strokeWidth: 3 },
+                    { data: temps.map(() => 8), color: () => C.bad, strokeWidth: 1.5, withDots: false },
+                    { data: temps.map(() => 2), color: () => C.cold, strokeWidth: 1.5, withDots: false },
+                  ],
+                }}
+                width={contentWidth - 24 - 32}
+                height={230}
+                yAxisSuffix="°"
+                withDots={false}
+                withShadow={false}
+                withVerticalLines={false}
+                chartConfig={{
+                  backgroundGradientFrom: C.surface,
+                  backgroundGradientTo: C.surface,
+                  decimalPlaces: 0,
+                  color: () => C.ink,
+                  labelColor: () => C.muted,
+                  propsForBackgroundLines: { stroke: C.line },
+                }}
+                style={{ marginLeft: -8 }}
+              />
+              <Text style={styles.legend}>
+                Limit lines: 8°C upper (red), 2°C lower (blue)
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.empty}>
+              No readings yet. Open /seed on the server to add sample data, or connect the ESP32.
+            </Text>
+          )}
+
+          {/* Latest readings table */}
+          {recent.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <View style={styles.tableHead}>
+                <Text style={[styles.th, { flex: 1 }]}>Time</Text>
+                <Text style={[styles.th, { flex: 1 }]}>Temperature</Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>Status</Text>
+              </View>
+              {recent.map((r) => {
+                const st = STATUS[r.status];
+                return (
+                  <View key={r.created_at} style={styles.tr}>
+                    <Text style={[styles.td, { flex: 1 }]}>{fmt(r.created_at)}</Text>
+                    <Text style={[styles.td, { flex: 1, fontWeight: "700" }]}>
+                      {r.temperature.toFixed(1)}°C
+                    </Text>
+                    <View style={{ flex: 1, alignItems: "flex-end" }}>
+                      <View style={[styles.pill, { backgroundColor: st.color }]}>
+                        <Text style={styles.pillText}>
+                          {st.icon} {r.status}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+              <Text style={styles.legend}>
+                Showing the latest {recent.length} of {readings.length} readings from the past hour
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F4F6", padding: 12, paddingTop: 50 },
-  alert: { padding: 16, borderRadius: 12, marginBottom: 12 },
-  alertTitle: { fontSize: 22, fontWeight: "bold" },
-  alertMsg: { fontSize: 16, marginTop: 4 },
-  error: { color: "#B91C1C", marginBottom: 8 },
-  box: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  heading: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
-  statsRow: { flexDirection: "row", justifyContent: "space-between" },
-  stat: { flex: 1 },
-  statLabel: { fontSize: 14, color: "#6B7280" },
-  statValue: { fontSize: 22, fontWeight: "bold", marginTop: 4 },
-  row: {
+  screen: { flex: 1, backgroundColor: C.bg },
+  page: { width: "100%", maxWidth: 720, padding: 12, paddingTop: 48 },
+
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    backgroundColor: "#F9FAFB",
-    padding: 10,
-    marginTop: 4,
-    borderRadius: 8,
+    alignItems: "flex-end",
+    marginBottom: 14,
+    paddingHorizontal: 4,
   },
-  rowText: { fontSize: 14 },
+  appName: { fontSize: 28, fontWeight: "800", color: C.ink, letterSpacing: -0.5 },
+  appSub: { fontSize: 14, color: C.muted, marginTop: 2 },
+  updated: { fontSize: 13, color: C.muted },
+
+  alert: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 18,
+    marginBottom: 12,
+  },
+  alertIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  alertIconText: { fontSize: 28, fontWeight: "900" },
+  alertTitle: { fontSize: 24, fontWeight: "800", color: "#fff" },
+  alertMsg: { fontSize: 15, color: "#fff", marginTop: 3 },
+  alertFil: { fontSize: 14, color: "#fff", opacity: 0.9, marginTop: 3, fontStyle: "italic" },
+  error: { color: C.bad, marginBottom: 10, paddingHorizontal: 4, fontWeight: "600" },
+
+  section: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  heading: { fontSize: 17, fontWeight: "800", color: C.ink, marginBottom: 12 },
+
+  statsRow: { flexDirection: "row", alignItems: "flex-start" },
+  statMain: { flex: 1.2 },
+  statSide: { flex: 1, paddingLeft: 14, borderLeftWidth: 1, borderLeftColor: C.line },
+  statLabel: { fontSize: 14, color: C.muted },
+  bigNumber: { fontSize: 52, fontWeight: "800", letterSpacing: -1.5, marginTop: 2 },
+  unit: { fontSize: 24, fontWeight: "700" },
+  rate: { fontSize: 22, fontWeight: "800", color: C.ink, marginTop: 8 },
+  rateNote: { fontSize: 13, color: C.muted, marginTop: 4 },
+
+  gaugeTrack: {
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#DCE7EC",
+    justifyContent: "center",
+  },
+  gaugeSafe: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    backgroundColor: C.safe,
+    opacity: 0.35,
+  },
+  gaugeMarker: {
+    position: "absolute",
+    top: -6,
+    width: 8,
+    height: 26,
+    marginLeft: -4,
+    borderRadius: 4,
+    backgroundColor: C.ink,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  gaugeLabels: { height: 18, marginTop: 10 },
+  gaugeLabel: { position: "absolute", width: 36, marginLeft: -18, textAlign: "center", fontSize: 12, color: C.muted },
+  gaugeCaption: { fontSize: 12, color: C.muted, marginTop: 2 },
+
+  minmax: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  minmaxText: { fontSize: 13, color: C.muted },
+  minmaxBold: { fontWeight: "700", color: C.ink },
+
+  legend: { fontSize: 12, color: C.muted, marginTop: 8 },
+  empty: { fontSize: 14, color: C.muted, lineHeight: 20 },
+
+  tableHead: {
+    flexDirection: "row",
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  th: { fontSize: 13, color: C.muted, fontWeight: "600" },
+  tr: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEF3F5",
+  },
+  td: { fontSize: 15, color: C.ink },
+  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  pillText: { color: "#fff", fontSize: 12, fontWeight: "700" },
 });
