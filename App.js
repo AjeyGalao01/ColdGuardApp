@@ -18,28 +18,25 @@ const C = {
   cold: "#1D4ED8",
 };
 
-// Status: banner color + icon + text (hindi color lang), English at Filipino
+// Status: banner color + icon + text (not color alone)
 const STATUS = {
   normal: {
     color: C.safe,
     icon: "✓",
     title: "Normal",
     msg: "Fridge is within the safe 2–8°C range.",
-    fil: "Ligtas ang temperatura ng ref.",
   },
   warning: {
     color: C.warn,
     icon: "!",
     title: "Warning",
     msg: "Temperature is close to the limit. Check the fridge.",
-    fil: "Malapit na sa limit ang temperatura. Pakisuri ang ref.",
   },
   excursion: {
     color: C.bad,
     icon: "✕",
     title: "Excursion alert",
     msg: "Temperature is outside 2–8°C. Check the fridge now.",
-    fil: "Lampas sa 2–8°C ang temperatura. Suriin agad ang ref.",
   },
 };
 
@@ -150,7 +147,6 @@ export default function App() {
           <View style={{ flex: 1 }}>
             <Text style={styles.alertTitle}>{s.title}</Text>
             <Text style={styles.alertMsg}>{s.msg}</Text>
-            <Text style={styles.alertFil}>{s.fil}</Text>
           </View>
         </View>
 
@@ -307,7 +303,6 @@ const styles = StyleSheet.create({
   alertIconText: { fontSize: 28, fontWeight: "900" },
   alertTitle: { fontSize: 24, fontWeight: "800", color: "#fff" },
   alertMsg: { fontSize: 15, color: "#fff", marginTop: 3 },
-  alertFil: { fontSize: 14, color: "#fff", opacity: 0.9, marginTop: 3, fontStyle: "italic" },
   error: { color: C.bad, marginBottom: 10, paddingHorizontal: 4, fontWeight: "600" },
 
   section: {
