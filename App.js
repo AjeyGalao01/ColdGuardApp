@@ -32,6 +32,16 @@ const fmt = (ts) =>
     minute: "2-digit",
   });
 
+// Rate of change in °C per minute (latest reading vs. reading 1 minute earlier)
+function getRate(readings) {
+  if (readings.length < 3) return null;
+  const last = readings[readings.length - 1];
+  const prev = readings[readings.length - 3];
+  const minutes = (last.created_at - prev.created_at) / 60;
+  if (minutes <= 0) return null;
+  return (last.temperature - prev.temperature) / minutes;
+}
+
 export default function App() {
   const [readings, setReadings] = useState([]);
   const [error, setError] = useState(false);
@@ -54,6 +64,8 @@ export default function App() {
 
   const latest = readings[readings.length - 1];
   const alert = ALERTS[latest ? latest.status : "normal"];
+  const rate = getRate(readings);
+  const rateIcon = rate === null ? "" : rate > 0.05 ? "↑" : rate < -0.05 ? "↓" : "→";
 
   return (
     <ScrollView style={styles.container}>
@@ -63,11 +75,6 @@ export default function App() {
           {alert.icon} {alert.title}
         </Text>
         <Text style={styles.alertMsg}>{alert.msg}</Text>
-        {latest && (
-          <Text style={styles.alertTemp}>
-            Current: {latest.temperature.toFixed(1)}°C
-          </Text>
-        )}
       </View>
 
       {error && (
@@ -76,37 +83,61 @@ export default function App() {
         </Text>
       )}
 
-      {/* 2. Line chart */}
-      <Text style={styles.heading}>Readings in the Past Hour</Text>
-      {readings.length > 0 && (
-        <LineChart
-          data={{
-            labels: readings.map((r, i) => (i % 20 === 0 ? fmt(r.created_at) : "")),
-            datasets: [{ data: readings.map((r) => r.temperature) }],
-          }}
-          width={Dimensions.get("window").width - 24}
-          height={240}
-          yAxisSuffix="°C"
-          withDots={false}
-          chartConfig={{
-            backgroundGradientFrom: "#ffffff",
-            backgroundGradientTo: "#ffffff",
-            decimalPlaces: 1,
-            color: (o = 1) => `rgba(37, 99, 235, ${o})`,
-            labelColor: () => "#374151",
-          }}
-          style={{ borderRadius: 12 }}
-        />
-      )}
-
-      {/* 3. List of readings */}
-      {[...readings].reverse().map((r) => (
-        <View key={r.created_at} style={styles.row}>
-          <Text style={styles.rowText}>{fmt(r.created_at)}</Text>
-          <Text style={styles.rowText}>{r.temperature.toFixed(1)}°C</Text>
-          <Text style={styles.rowText}>{r.status}</Text>
+      {/* 2. Current Fridge Statistics */}
+      <View style={styles.box}>
+        <Text style={styles.heading}>Current Fridge Statistics</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>Temperature</Text>
+            <Text style={styles.statValue}>
+              {latest ? `${latest.temperature.toFixed(1)}°C` : "--"}
+            </Text>
+          </View>
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>Rate of Change</Text>
+            <Text style={styles.statValue}>
+              {rate === null
+                ? "--"
+                : `${rateIcon} ${rate > 0 ? "+" : ""}${rate.toFixed(2)}°C/min`}
+            </Text>
+          </View>
         </View>
-      ))}
+      </View>
+
+      {/* 3. Readings in the Past Hour (boxed): chart + list */}
+      <View style={styles.box}>
+        <Text style={styles.heading}>Readings in the Past Hour</Text>
+        {readings.length > 0 && (
+          <LineChart
+            data={{
+              labels: readings.map((r, i) =>
+                i % 20 === 0 ? fmt(r.created_at) : ""
+              ),
+              datasets: [{ data: readings.map((r) => r.temperature) }],
+            }}
+            width={Dimensions.get("window").width - 24 - 28}
+            height={240}
+            yAxisSuffix="°C"
+            withDots={false}
+            chartConfig={{
+              backgroundGradientFrom: "#ffffff",
+              backgroundGradientTo: "#ffffff",
+              decimalPlaces: 1,
+              color: (o = 1) => `rgba(37, 99, 235, ${o})`,
+              labelColor: () => "#374151",
+            }}
+            style={{ borderRadius: 12 }}
+          />
+        )}
+
+        {[...readings].reverse().map((r) => (
+          <View key={r.created_at} style={styles.row}>
+            <Text style={styles.rowText}>{fmt(r.created_at)}</Text>
+            <Text style={styles.rowText}>{r.temperature.toFixed(1)}°C</Text>
+            <Text style={styles.rowText}>{r.status}</Text>
+          </View>
+        ))}
+      </View>
     </ScrollView>
   );
 }
@@ -116,13 +147,24 @@ const styles = StyleSheet.create({
   alert: { padding: 16, borderRadius: 12, marginBottom: 12 },
   alertTitle: { fontSize: 22, fontWeight: "bold" },
   alertMsg: { fontSize: 16, marginTop: 4 },
-  alertTemp: { fontSize: 18, fontWeight: "600", marginTop: 8 },
   error: { color: "#B91C1C", marginBottom: 8 },
-  heading: { fontSize: 18, fontWeight: "bold", marginVertical: 8 },
+  box: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  heading: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
+  statsRow: { flexDirection: "row", justifyContent: "space-between" },
+  stat: { flex: 1 },
+  statLabel: { fontSize: 14, color: "#6B7280" },
+  statValue: { fontSize: 22, fontWeight: "bold", marginTop: 4 },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    backgroundColor: "#fff",
+    backgroundColor: "#F9FAFB",
     padding: 10,
     marginTop: 4,
     borderRadius: 8,
